@@ -15,8 +15,6 @@ namespace FreecamV
         static Vector3 OffsetCoords = Vector3.Zero;
         static Scaleform scaleform;
 
-        static bool SlowMode = true;
-        static bool Frozen = false;
         static bool Lock = false;
         static bool HUD = true;
         static bool Attached = false;
@@ -47,8 +45,19 @@ namespace FreecamV
             Vector3 CamCoord = FCamera.Position;
             Vector3 NewPos = ProcessNewPos(CamCoord);
 
+            if (Attached) {
+                OffsetCoords += NewPos - CamCoord;
+
+                Vector3 currentOffsetToEntity = Function.Call<Vector3>(Hash.GET_OFFSET_FROM_ENTITY_GIVEN_WORLD_COORDS, AttachedEntity, FCamera.Position.X, FCamera.Position.Y, FCamera.Position.Z);
+
+                if (currentOffsetToEntity.Length() < 100.0) {
+                    NewPos = Function.Call<Vector3>(Hash.GET_ENTITY_COORDS, AttachedEntity) + OffsetCoords;
+                }
+            }
+
             if (!Function.Call<bool>(Hash.IS_RADAR_HIDDEN))
                 Function.Call(Hash.DISPLAY_RADAR, false);
+
 
             FCamera.Position = NewPos;
             FCamera.Rotation = new Vector3(OffsetRotX, OffsetRotY, OffsetRotZ);
@@ -61,11 +70,12 @@ namespace FreecamV
                 if (Attached && Game.IsControlJustPressed(Control.CursorCancel))
                 {
                     // Attachment cleanup
-                    FCamera.Detach();
                     AttachedEntity = null;
                     Attached = false;
                     scaleform.CallFunction("SET_DATA_SLOT", 12, Function.Call<string>(Hash.GET_CONTROL_INSTRUCTIONAL_BUTTON, 2, Control.CursorAccept, 0), "Attach");
                     scaleform.CallFunction("DRAW_INSTRUCTIONAL_BUTTONS", -1);
+
+                    OffsetCoords = Vector3.Zero;
                 }
                 else if (Game.IsControlJustPressed(Control.CursorAccept))
                 {
@@ -74,7 +84,6 @@ namespace FreecamV
                     {
                         AttachedEntity = AttachEnt;
                         OffsetCoords = Function.Call<Vector3>(Hash.GET_OFFSET_FROM_ENTITY_GIVEN_WORLD_COORDS, AttachedEntity, FCamera.Position.X, FCamera.Position.Y, FCamera.Position.Z);
-                        FCamera.AttachTo(AttachedEntity, new Vector3(OffsetCoords.X, OffsetCoords.Y, OffsetCoords.Z));
                         Attached = true;
                         scaleform.CallFunction("SET_DATA_SLOT", 12, Function.Call<string>(Hash.GET_CONTROL_INSTRUCTIONAL_BUTTON, 2, Control.CursorCancel, 0), "Detach");
                         scaleform.CallFunction("DRAW_INSTRUCTIONAL_BUTTONS", -1);
@@ -113,18 +122,6 @@ namespace FreecamV
                     Function.Call(Hash.SET_TIMECYCLE_MODIFIER, "None");
                     scaleform.CallFunction("SET_DATA_SLOT", 8, Function.Call<string>(Hash.GET_CONTROL_INSTRUCTIONAL_BUTTON, 2, Control.FrontendLeft, 0), $"Filter: [{Config.Filters[FilterIndex]}]");
                     scaleform.CallFunction("DRAW_INSTRUCTIONAL_BUTTONS", -1);
-                }
-                if (Game.IsControlJustPressed(Control.Detonate))
-                {
-                    if (!SlowMode) Game.TimeScale /= Config.SlowMotionMultiplier;
-                    else Game.TimeScale = 1;
-                    SlowMode = !SlowMode;
-                }
-                if (Game.IsControlJustPressed(Control.VehicleExit))
-                {
-                    SlowMode = !SlowMode;
-                    Frozen = !Frozen;
-                    Game.Pause(Frozen);
                 }
             }
             if (Game.IsControlJustPressed(Control.FrontendAccept))
@@ -226,7 +223,6 @@ namespace FreecamV
             Function.Call(Hash.SET_TIMECYCLE_MODIFIER, Config.Filters[FilterIndex]);
             World.RenderingCamera = FCamera;
             Init();
-            if (SlowMode) Game.TimeScale /= Config.SlowMotionMultiplier;
         }
 
         public static void Disable()
@@ -238,13 +234,11 @@ namespace FreecamV
             Function.Call(Hash.SET_TIMECYCLE_MODIFIER, "None");
             World.RenderingCamera = null;
             Game.Pause(false);
-            Frozen = false;
             Attached = false;
             Lock = false;
             OffsetRotX = 0.0f;
             OffsetRotY = 0.0f;
             OffsetRotZ = 0.0f;
-            if (SlowMode) Game.TimeScale = 1;
         }
 
         public static void Init()
